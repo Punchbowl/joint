@@ -1,6 +1,7 @@
 require 'bundler/setup'
 Bundler.setup(:default, 'test', 'development')
 
+require 'logger'
 require 'byebug'
 require 'tempfile'
 require 'mongo_mapper'
@@ -12,11 +13,17 @@ require 'mocha/mini_test'
 
 require File.expand_path(File.dirname(__FILE__) + '/../lib/joint')
 
+log_dir = File.expand_path('../../log', __FILE__)
+FileUtils.mkdir_p(log_dir)
+logger = Logger.new(File.join(log_dir, 'test.log'))
+
+MongoMapper.connection = Mongo::Client.new(['127.0.0.1:27017'], :database => 'joint_test', :logger => logger)
 MongoMapper.database = "joint_test"
+MongoMapper.database.collections.each { |c| c.indexes.drop_all }
 
 class Minitest::Test
   def setup
-    MongoMapper.database.collections.each { |coll| coll.remove unless coll.name =~ /^system/ }
+    MongoMapper.database.collections.each { |coll| coll.drop unless coll.name =~ /^system/ }
   end
 
   def assert_difference(expression, difference = 1, message = nil, &block)
@@ -101,9 +108,9 @@ module JointTestHelpers
     f
   end
 
-  def grid(collection_name = 'fs')
-    @grids ||= {}
-    @grids[collection_name] ||= Mongo::Grid.new(MongoMapper.database, collection_name)
+  def fs_bucket(collection_name = 'fs')
+    @fs_buckets ||= {}
+    @fs_buckets[collection_name] ||= MongoMapper.database.fs(bucket_name: collection_name)
   end
 
   def key_names

@@ -22,6 +22,11 @@ module Joint
       @io.rewind if @io.respond_to?(:rewind)
     end
 
+    def eof
+      @io.eof
+    end
+    alias eof? eof
+
     alias path name
   end
 end

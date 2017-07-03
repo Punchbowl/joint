@@ -12,7 +12,10 @@ Gem::Specification.new do |s|
 
   s.add_dependency 'wand', '~> 0.4'
   s.add_dependency 'mime-types'
-  s.add_dependency 'mongo_mapper', '~> 0.9'
+  # SEE GEMFILE
+  # s.add_dependency 'mongo_mapper', '~> 0.9'
+  s.add_dependency 'activemodel',   ">= 4.2.0"
+  s.add_dependency 'activesupport', '>= 4.2'
 
   s.files         = `git ls-files`.split("\n")
   s.test_files    = `git ls-files -- {test,spec,features}/*`.split("\n")

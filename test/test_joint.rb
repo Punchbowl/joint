@@ -67,8 +67,8 @@ describe "JointTest" do
     let(:subject) { @doc }
 
     it "assign GridFS content_type" do
-      grid.get(subject.image_id).content_type.must_equal 'image/jpeg'
-      grid.get(subject.file_id).content_type.must_equal 'application/pdf'
+      fs_bucket.find_one(_id: subject.image_id).content_type.must_equal 'image/jpeg'
+      fs_bucket.find_one(_id: subject.file_id).content_type.must_equal 'application/pdf'
     end
 
     it "assign joint keys" do
@@ -99,10 +99,14 @@ describe "JointTest" do
       subject.file.id.must_be_instance_of(BSON::ObjectId)
     end
 
-    it "proxy unknown methods to GridIO object" do
-      subject.image.files_id.must_equal subject.image_id
+    it "proxy unknown methods to Grid::File object" do
       subject.image.content_type.must_equal 'image/jpeg'
       subject.image.filename.must_equal 'mr_t.jpg'
+      subject.image.length.must_equal 13661
+    end
+
+    it "provides backwards support for previous Grid::IO" do
+      subject.image.files_id.must_equal subject.image_id
       subject.image.file_length.must_equal 13661
     end
 
@@ -127,7 +131,7 @@ describe "JointTest" do
     end
 
     it "clear assigned attachments so they don't get uploaded twice" do
-      Mongo::Grid.any_instance.expects(:put).never
+      Mongo::Grid::FSBucket.any_instance.expects(:open_upload_stream).never
       subject.save
     end
   end
@@ -142,8 +146,8 @@ describe "JointTest" do
     let(:subject) { @doc }
 
     it "assign GridFS content_type" do
-      grid.get(subject.image_id).content_type.must_equal 'image/jpeg'
-      grid.get(subject.file_id).content_type.must_equal 'application/pdf'
+      fs_bucket.find_one(_id: subject.image_id).content_type.must_equal 'image/jpeg'
+      fs_bucket.find_one(_id: subject.file_id).content_type.must_equal 'application/pdf'
     end
 
     it "assign joint keys" do
@@ -202,7 +206,7 @@ describe "JointTest" do
     end
 
     it "clear assigned attachments so they don't get uploaded twice" do
-      Mongo::Grid.any_instance.expects(:put).never
+      Mongo::Grid::FSBucket.any_instance.expects(:open_upload_stream).never
       subject.save
     end
   end
@@ -228,11 +232,11 @@ describe "JointTest" do
       subject.file_size.must_equal 5
     end
 
-    it "update GridFS" do
-      grid.get(subject.file_id).filename.must_equal 'test2.txt'
-      grid.get(subject.file_id).content_type.must_equal 'text/plain'
-      grid.get(subject.file_id).file_length.must_equal 5
-      grid.get(subject.file_id).read.must_equal @test2.read
+    it "update Grid::FSBucket" do
+      fs_bucket.find_one(_id: subject.file_id).filename.must_equal 'test2.txt'
+      fs_bucket.find_one(_id: subject.file_id).content_type.must_equal 'text/plain'
+      fs_bucket.find_one(_id: subject.file_id).info.length.must_equal 5
+      fs_bucket.open_download_stream(subject.file_id).read.must_equal @test2.read
     end
   end
 
@@ -255,11 +259,11 @@ describe "JointTest" do
       subject.file_size.must_equal 5
     end
 
-    it "update GridFS" do
-      grid.get(subject.file_id).filename.must_equal 'test2.txt'
-      grid.get(subject.file_id).content_type.must_equal 'text/plain'
-      grid.get(subject.file_id).file_length.must_equal 5
-      grid.get(subject.file_id).read.must_equal @test2.read
+    it "update Grid::FSBucket" do
+      fs_bucket.find_one(_id: subject.file_id).filename.must_equal 'test2.txt'
+      fs_bucket.find_one(_id: subject.file_id).content_type.must_equal 'text/plain'
+      fs_bucket.find_one(_id: subject.file_id).info.length.must_equal 5
+      fs_bucket.open_download_stream(subject.file_id).read.must_equal @test2.read
     end
   end
 
@@ -343,10 +347,10 @@ describe "JointTest" do
     end
 
     it "clear nil attachments after save and not attempt to delete again" do
-      Mongo::Grid.any_instance.expects(:delete).once
+      Mongo::Grid::FSBucket.any_instance.expects(:delete).once
       subject.image = nil
       subject.save
-      Mongo::Grid.any_instance.expects(:delete).never
+      Mongo::Grid::FSBucket.any_instance.expects(:delete).never
       subject.save
     end
 
@@ -395,10 +399,10 @@ describe "JointTest" do
     end
 
     it "clear nil attachments after save and not attempt to delete again" do
-      Mongo::Grid.any_instance.expects(:delete).once
+      Mongo::Grid::FSBucket.any_instance.expects(:delete).once
       subject.image = nil
       subject.save
-      Mongo::Grid.any_instance.expects(:delete).never
+      Mongo::Grid::FSBucket.any_instance.expects(:delete).never
       subject.save
     end
 
@@ -433,7 +437,7 @@ describe "JointTest" do
     end
 
     it "raise Mongo::GridFileNotFound" do
-      assert_raises(Mongo::GridFileNotFound) { subject.image.read }
+      assert_raises(Mongo::Error::FileNotFound) { subject.image.read }
     end
   end
 
@@ -547,7 +551,8 @@ describe "JointTest" do
 
     it "assign joint keys" do
       subject.file_size.must_equal 50790
-      subject.file_type.must_equal "audio/mp4"
+      # subject.file_type.must_equal "audio/mp4"
+      subject.file_type.must_equal "audio/x-m4a"
       subject.file_id.wont_be_nil
       subject.file_id.must_be_instance_of(BSON::ObjectId)
     end
