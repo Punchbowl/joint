@@ -37,7 +37,7 @@ module Joint
 
     def destroy_nil_attachments
       nil_attachments.each_value do |id|
-        fs_bucket.delete(id)
+        fs_bucket.delete(id) rescue Mongo::Error::FileNotFound
       end
 
       nil_attachments.clear
