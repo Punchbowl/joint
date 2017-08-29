@@ -21,7 +21,8 @@ module Joint
         grid.put(io, {
           :_id          => send(name).id,
           :filename     => send(name).name,
-          :content_type => send(name).type
+          :content_type => send(name).type,
+          :w            => 0
         })
       end
       assigned_attachments.clear
