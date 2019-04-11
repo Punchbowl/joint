@@ -1,3 +1,3 @@
 module Joint
-  Version = '0.6.2'
+  Version = '0.7.0'
 end
