@@ -7,6 +7,7 @@ module Joint
     def attachment(name, options = {})
       options.symbolize_keys!
       name = name.to_sym
+      accessor_name = options[:accessor_name] || name.to_sym
 
       self.attachment_names = attachment_names.dup.add(name)
 
@@ -25,18 +26,18 @@ module Joint
       validates_presence_of(name) if options[:required]
 
       self.class_eval <<-EOC
-        def #{name}
-          @#{name} ||= AttachmentProxy.new(self, :#{name})
+        def #{accessor_name}
+          @#{accessor_name} ||= AttachmentProxy.new(self, :#{name})
         end
 
-        def #{name}?
+        def #{accessor_name}?
           !nil_attachments.has_key?(:#{name}) && send(:#{name}_id?)
         end
       EOC
 
       unless options[:readonly]
         self.class_eval <<-EOC
-          def #{name}=(file)
+          def #{accessor_name}=(file)
             if file.nil?
               nil_attachments[:#{name}] = send("#{name}_id")
               assigned_attachments.delete(:#{name})
