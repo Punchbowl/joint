@@ -20,6 +20,10 @@ module Joint
       @instance.send("#{@name}_type")
     end
 
+    def extension
+      MIME::Types[type].first.try(:preferred_extension)
+    end
+
     def nil?
       !@instance.send("#{@name}?")
     end
