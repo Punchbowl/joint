@@ -24,6 +24,12 @@ module Joint
       MIME::Types[type].first.try(:preferred_extension)
     end
 
+    def crc32
+      Zlib.crc32([id, name, size, type].compact.join())
+    rescue
+      0
+    end
+
     def nil?
       !@instance.send("#{@name}?")
     end
