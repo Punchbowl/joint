@@ -103,7 +103,7 @@ module JointTestHelpers
 
   def grid(collection_name = 'fs')
     @grids ||= {}
-    @grids[collection_name] ||= Mongo::Grid.new(MongoMapper.database, collection_name)
+    @grids[collection_name] ||= MongoMapper.database.fs(bucket_name: collection_name)
   end
 
   def key_names
