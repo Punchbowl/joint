@@ -36,7 +36,7 @@ module Joint
     alias_method :blank?, :nil?
 
     def grid_io
-      @grid_io ||= @instance.grid.get(id)
+      @grid_io ||= @instance.grid.open_download_stream(id)
     end
 
     def method_missing(method, *args, &block)

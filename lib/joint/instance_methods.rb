@@ -1,6 +1,6 @@
 module Joint
   def grid
-    @grid ||= Mongo::Grid.new(database, joint_collection_name)
+    @grid ||= database.fs(bucket_name: joint_collection_name)
   end
 
   private
@@ -17,13 +17,15 @@ module Joint
       assigned_attachments.each_pair do |name, io|
         next unless io.respond_to?(:read)
         io.rewind if io.respond_to?(:rewind)
-        grid.delete(send(name).id)
-        grid.put(io, {
-          :_id          => send(name).id,
-          :filename     => send(name).name,
-          :content_type => send(name).type,
-          :w            => 0
-        })
+        delete_file(send(name).id)
+        grid.upload_from_stream(
+          send(name).name,
+          io,
+          {
+            file_id: send(name).id,
+            metadata: { content_type: send(name).type },
+          }
+        )
       end
       assigned_attachments.clear
     end
@@ -39,13 +41,24 @@ module Joint
 
     def destroy_nil_attachments
       nil_attachments.each_value do |id|
-        grid.delete(id)
+        delete_file(id)
       end
 
       nil_attachments.clear
     end
 
     def destroy_all_attachments
-      self.class.attachment_names.map { |name| grid.delete(send(name).id) }
+      self.class.attachment_names.map do |name|
+        delete_file(send(name).id)
+      end
+    end
+
+    def delete_file(file_id)
+      file_id = BSON::ObjectId(file_id) if file_id.is_a?(String)
+      begin
+        grid.delete(file_id)
+      rescue Mongo::Error::FileNotFound => e
+        Rails.logger.warn(e.message)
+      end
     end
 end
