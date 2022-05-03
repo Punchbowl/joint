@@ -40,7 +40,9 @@ module Joint
     end
 
     def method_missing(method, *args, &block)
-      grid_io.send(method, *args, &block)
+      grid_io do |io|
+        io.send(method, *args, &block)
+      end
     end
   end
 end
