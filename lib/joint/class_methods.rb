@@ -38,7 +38,7 @@ module Joint
       unless options[:readonly]
         self.class_eval <<-EOC
           def #{accessor_name}=(file)
-            if file.nil?
+            if file.blank?
               nil_attachments[:#{name}] = send("#{name}_id")
               assigned_attachments.delete(:#{name})
             else
