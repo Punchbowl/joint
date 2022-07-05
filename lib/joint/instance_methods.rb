@@ -22,8 +22,8 @@ module Joint
           send(name).name,
           io,
           {
+            content_type: send(name).type,
             file_id: send(name).id,
-            metadata: { content_type: send(name).type },
           }
         )
       end
