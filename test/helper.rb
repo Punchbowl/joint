@@ -8,7 +8,7 @@ require 'mongo_mapper'
 require 'minitest/spec'
 require 'minitest/autorun'
 require 'minitest/pride'
-require 'mocha/mini_test'
+require 'mocha/minitest'
 
 require File.expand_path(File.dirname(__FILE__) + '/../lib/joint')
 
@@ -16,7 +16,7 @@ MongoMapper.database = "joint_test"
 
 class Minitest::Test
   def setup
-    MongoMapper.database.collections.each { |coll| coll.remove unless coll.name =~ /^system/ }
+    MongoMapper.database.collections.each { |coll| coll.delete_many unless coll.name =~ /^system/ }
   end
 
   def assert_difference(expression, difference = 1, message = nil, &block)
