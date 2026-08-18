@@ -1,7 +1,13 @@
 module Joint
   class AttachmentProxy
+    # The attachment this proxy stands for. Not to be confused with #name, which is the
+    # stored file's name. Lets a record find the proxies it needs to invalidate without
+    # having to know each attachment's accessor_name.
+    attr_reader :attachment_name
+
     def initialize(instance, name)
       @instance, @name = instance, name
+      @attachment_name = name
     end
 
     def id

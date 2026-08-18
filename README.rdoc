@@ -24,6 +24,33 @@ Also, #image and #pdf are proxies so you can do stuff like:
 
 If you call a method other than those in the proxy it calls it on the GridIO instance so you can still get at all the GridIO instance methods.
 
+== Copying a record
+
+Attachment ids are ordinary keys, so a copied record points at the *same* GridFS files as the record it came from. The writers only mint a new id when the current one is nil -- that is what makes replacing a file in place work -- so saving a copy with a new file overwrites the original's blob rather than creating its own.
+
+Use #copy_attachments_from! to give a copy its own files. The bytes are re-uploaded under fresh ids with the original names and content types, exactly as if the same files had been uploaded to a new record.
+
+  copy = doc.clone
+  copy.copy_attachments_from!(doc)
+  copy.save!
+
+  copy.image_id != doc.image_id  # each record owns its own blob
+  copy.image_name == doc.image_name
+
+Pass names to copy a subset:
+
+  copy.copy_attachments_from!(doc, :image)
+
+If you want the copy to have no attachments at all, rather than its own copies of them, use #detach_attachments!. It clears the inherited pointers without deleting the files they refer to:
+
+  copy = doc.clone
+  copy.detach_attachments!        # or detach_attachments!(:image)
+  copy.image = File.open(...)     # uploads to a fresh id
+
+Either method is safe to call before or after assigning new files, and both drop any memoized attachment proxies so reads follow the new ids.
+
+Neither is applied automatically on #clone or #dup, because copies that deliberately share the original's files -- a record templated off another, say -- are a legitimate pattern. If you copy a record and assign attachments without calling one of these, you will write over the original's blobs.
+
 == Note on Patches/Pull Requests
  
 * Fork the project.

@@ -11,38 +11,94 @@ module Joint
   def initialize_copy(other)
     super
 
-    instance_variables.each do |ivar|
-      remove_instance_variable(ivar) if instance_variable_get(ivar).is_a?(AttachmentProxy)
-    end
-
+    reset_attachment_proxies!
     @assigned_attachments = nil
     @nil_attachments      = nil
     @grid                 = nil
   end
 
-  # Detach this record from the GridFS files it inherited from the record it was copied
-  # from, so that saving uploads its own. Detaches every attachment unless given names.
+  # Give this record its own copies of another record's attachments. The bytes are
+  # re-uploaded under fresh GridFS ids on save, with the original file names and content
+  # types, exactly as if the same files had been uploaded to a new record. Copies every
+  # attachment unless given names.
   #
-  # The attachment writers mint a new id only when the current one is nil, which is what
-  # makes replacing a file in place work -- and what makes a copy silently overwrite its
-  # source. This clears the ids so the next assignment gets fresh ones.
+  # This is what you want after `clone`: a clone inherits the source's attachment ids,
+  # and the writers only mint a new id when the current one is nil, so a clone that is
+  # saved with a new file writes over the source's blob instead of its own.
+  #
+  #   copy = doc.clone
+  #   copy.copy_attachments_from!(doc)
+  #   copy.save!
+  def copy_attachments_from!(source, *names)
+    names = self.class.attachment_names.to_a if names.empty?
+
+    names.map(&:to_sym).each do |name|
+      # Read before detaching, so that copying a record onto itself still works.
+      io = source.send(:"#{name}?") ? attachment_upload_for(source, name) : nil
+
+      detach_attachments!(name)
+      send(:"#{name}=", io) if io
+    end
+  end
+
+  # Detach this record from the GridFS files it inherited from the record it was copied
+  # from, so that saving cannot touch them. Detaches every attachment unless given names.
   #
   # Deliberately writes the plain `<name>_id/_name/_size/_type` keys rather than going
   # through the attachment writers: `send(:"#{name}=", nil)` would register the old ids
   # in `nil_attachments`, and the after_save `destroy_nil_attachments` would then delete
-  # the source's files outright.
+  # the source's files outright. Any `nil_attachments` entry already queued is dropped
+  # for the same reason -- detaching means this record no longer owns those files.
+  #
+  # Order-independent with respect to assignment: an attachment that already has a file
+  # queued keeps it and is given a fresh id to upload to, rather than being reset to nil
+  # and uploading an orphan the record never references.
   def detach_attachments!(*names)
     names = self.class.attachment_names.to_a if names.empty?
+    names = names.map(&:to_sym)
 
-    names.map(&:to_sym).each do |name|
-      send(:"#{name}_id=",   nil)
-      send(:"#{name}_name=", nil)
-      send(:"#{name}_size=", nil)
-      send(:"#{name}_type=", nil)
+    names.each do |name|
+      nil_attachments.delete(name)
+
+      if assigned_attachments[name]
+        send(:"#{name}_id=", BSON::ObjectId.new)
+      else
+        send(:"#{name}_id=",   nil)
+        send(:"#{name}_name=", nil)
+        send(:"#{name}_size=", nil)
+        send(:"#{name}_type=", nil)
+      end
     end
+
+    reset_attachment_proxies!(names)
   end
 
   private
+    # A proxy reads its attachment's keys off the record it was built from and memoizes
+    # its GridFS stream, so it must not outlive a copy or an id change. Matches on the
+    # proxy itself rather than on `attachment_names`, because the memoizing ivar is named
+    # after the attachment's accessor_name, which Joint does not record.
+    def reset_attachment_proxies!(names=nil)
+      instance_variables.each do |ivar|
+        proxy = instance_variable_get(ivar)
+        next unless proxy.is_a?(AttachmentProxy)
+        next if names && !names.include?(proxy.attachment_name)
+
+        remove_instance_variable(ivar)
+      end
+    end
+
+    # Wraps another record's attachment as an upload, preserving the stored file name and
+    # content type. Joint::IO is the one IO that FileHelpers reads a type off directly,
+    # so the copy does not get re-sniffed or named after a temp file.
+    def attachment_upload_for(source, name)
+      Joint::IO.new(
+        name:    source.send(:"#{name}_name") || name.to_s,
+        type:    source.send(:"#{name}_type"),
+        content: source.send(name).read
+      )
+    end
+
     def assigned_attachments
       @assigned_attachments ||= {}
     end
@@ -98,8 +154,9 @@ module Joint
         grid.delete(file_id)
       rescue Mongo::Error::FileNotFound => e
         # Joint does not depend on Rails; outside of it (including this gem's own test
-        # suite) there is no Rails.logger to warn through.
-        Rails.logger.warn(e.message) if defined?(Rails) && Rails.respond_to?(:logger)
+        # suite) there is no Rails.logger to warn through, and even under Rails the
+        # logger can be unset during early boot.
+        Rails.logger&.warn(e.message) if defined?(Rails) && Rails.respond_to?(:logger)
       end
     end
 end
