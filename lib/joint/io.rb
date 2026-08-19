@@ -17,7 +17,13 @@ module Joint
     def read(*args)
       @io.read(*args)
     end
-    
+
+    # The Mongo driver chunks an upload with `read(chunk_size) until eof?`, so an IO that
+    # cannot answer this is not usable as an attachment.
+    def eof?
+      @io.eof?
+    end
+
     def rewind
       @io.rewind if @io.respond_to?(:rewind)
     end

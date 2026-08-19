@@ -614,4 +614,200 @@ describe "JointTest" do
       end
     end
   end
+
+  describe "Cloning a document with attachments" do
+    before do
+      @doc = Asset.create(:image => @image, :file => @file)
+      rewind_files
+    end
+
+    it "does not hand the clone a proxy bound to the source" do
+      @doc.image # memoize the proxy on the source, as any copy routine that reads it would
+
+      copy = @doc.clone
+      copy.image_id = BSON::ObjectId.new
+
+      copy.image.wont_be_same_as @doc.image
+      copy.image.id.must_equal copy.image_id
+      copy.image.id.wont_equal @doc.image_id
+    end
+
+    it "does not share pending attachment bookkeeping with the source" do
+      copy = @doc.clone
+
+      copy.send(:assigned_attachments).wont_be_same_as @doc.send(:assigned_attachments)
+      copy.send(:nil_attachments).wont_be_same_as @doc.send(:nil_attachments)
+    end
+
+    it "clears every attachment key on detach_attachments!" do
+      copy = @doc.clone
+      copy.detach_attachments!
+
+      Asset.attachment_names.each do |name|
+        key_names.each { |key| copy.send("#{name}_#{key}").must_be_nil }
+      end
+    end
+
+    it "clears only the named attachments on detach_attachments!" do
+      copy = @doc.clone
+      copy.detach_attachments!(:image)
+
+      copy.image_id.must_be_nil
+      copy.file_id.must_equal @doc.file_id
+    end
+
+    it "uploads its own files rather than overwriting the source's" do
+      original_id    = @doc.image_id
+      original_bytes = @doc.image.read
+
+      copy = @doc.clone
+      copy.detach_attachments!
+      copy.image = @image
+      copy.file  = @file
+
+      # 2 new grid files, not 0: overwriting the source in place would net out to zero.
+      assert_grid_difference(2) { copy.save! }
+      rewind_files
+
+      copy.image_id.wont_equal original_id
+      Asset.find(copy.id).image.read.must_equal original_bytes
+      Asset.find(@doc.id).image_id.must_equal original_id
+      Asset.find(@doc.id).image.read.must_equal original_bytes
+    end
+
+    it "uploads its own files when the clone is an embedded document" do
+      asset = Asset.new
+      doc   = asset.embedded_assets.build(:image => @image, :file => @file)
+      asset.save!
+      rewind_files
+
+      doc.image # memoize the proxy on the source
+
+      copy = doc.clone
+      copy.detach_attachments!
+      copy.image = @image
+
+      assert_grid_difference(1) do
+        asset.embedded_assets << copy
+        asset.save!
+      end
+      rewind_files
+
+      copy.image_id.wont_equal doc.image_id
+      Asset.find(asset.id).embedded_assets.last.image.read.must_equal doc.image.read
+    end
+
+    it "keeps an already-queued file when detached, rather than orphaning it" do
+      copy = @doc.clone
+      copy.image = @image       # queued first, so the id is still the source's
+      copy.detach_attachments!  # ...and detaching must not strand it
+
+      copy.image_id.wont_be_nil
+      copy.image_id.wont_equal @doc.image_id
+
+      assert_grid_difference(1) { copy.save! }
+      rewind_files
+
+      Asset.find(copy.id).image.read.wont_be_empty
+      Asset.find(@doc.id).image_id.must_equal @doc.image_id
+    end
+
+    it "drops memoized proxies when detaching, so reads follow the new id" do
+      copy = @doc.clone
+      copy.image.read           # memoizes the proxy and its stream on the source's file
+      stale = copy.image
+
+      copy.detach_attachments!
+      copy.image = @image2
+      copy.save!
+      rewind_files
+
+      copy.image.wont_be_same_as stale
+      copy.image.read.must_equal Asset.find(copy.id).image.read
+    end
+  end
+
+  describe "Copying attachments to another document" do
+    before do
+      @doc = Asset.create(:image => @image, :file => @file)
+      rewind_files
+    end
+
+    it "uploads its own files under fresh ids" do
+      copy = @doc.clone
+
+      assert_grid_difference(2) do
+        copy.copy_attachments_from!(@doc)
+        copy.save!
+      end
+
+      copy.image_id.wont_equal @doc.image_id
+      copy.file_id.wont_equal @doc.file_id
+      Asset.find(copy.id).image.read.must_equal Asset.find(@doc.id).image.read
+      Asset.find(copy.id).file.read.must_equal Asset.find(@doc.id).file.read
+    end
+
+    it "leaves the source's files untouched" do
+      original_id    = @doc.image_id
+      original_bytes = @doc.image.read
+
+      copy = @doc.clone
+      copy.copy_attachments_from!(@doc)
+      copy.save!
+
+      Asset.find(@doc.id).image_id.must_equal original_id
+      Asset.find(@doc.id).image.read.must_equal original_bytes
+    end
+
+    it "preserves the file name and content type" do
+      copy = @doc.clone
+      copy.copy_attachments_from!(@doc)
+      copy.save!
+
+      Asset.find(copy.id).image_name.must_equal @doc.image_name
+      Asset.find(copy.id).image_type.must_equal @doc.image_type
+      Asset.find(copy.id).image_size.must_equal @doc.image_size
+    end
+
+    it "copies only the named attachments" do
+      copy = @doc.clone
+      copy.copy_attachments_from!(@doc, :image)
+      copy.save!
+
+      copy.image_id.wont_equal @doc.image_id
+      copy.file_id.must_equal @doc.file_id
+    end
+
+    it "leaves attachments the source does not have empty" do
+      source = Asset.create(:image => @image)
+      rewind_files
+
+      copy = source.clone
+      copy.copy_attachments_from!(source)
+      copy.save!
+
+      copy.image_id.wont_be_nil
+      copy.file_id.must_be_nil
+    end
+
+    it "works for embedded documents" do
+      asset = Asset.new
+      doc   = asset.embedded_assets.build(:image => @image, :file => @file)
+      asset.save!
+      rewind_files
+
+      doc.image # memoize the proxy on the source
+
+      copy = doc.clone
+      copy.copy_attachments_from!(doc)
+
+      assert_grid_difference(2) do
+        asset.embedded_assets << copy
+        asset.save!
+      end
+
+      copy.image_id.wont_equal doc.image_id
+      Asset.find(asset.id).embedded_assets.last.image.read.must_equal doc.image.read
+    end
+  end
 end
